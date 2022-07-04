@@ -31,7 +31,9 @@
 #include "json_user.h"
 #include "wifi_cell.h"
 #include "FOTA_LTE.h"
+#include "Button.h"
 #define TAG_MAIN "SIMCOM"
+#define BUTTON (gpio_num_t)0
 
 #define CLIENT_ID       "MAN02ND00074"
 #define MQTT_BROKER     "tcp://vttmqtt.innoway.vn:1883"
@@ -47,12 +49,12 @@ gps gps_7600;
 Network_Signal network7600 = {};
 Device_Infor deviceInfor = {};
 LBS LBS_location;
+int Location_type = 0x00;
 void GetDeviceTimestamp(long *time_stamp)
 {
   struct timeval time_now;
   gettimeofday(&time_now, 0);
   *time_stamp = time_now.tv_sec;
-//  ESP_LOGW(TAG,"Device timestamp: %ld\r\n", time_stamp);
 }
 void init_gpio_output()
 {
@@ -87,6 +89,7 @@ void setup()
   Serial.begin(115200);
   esp_log_level_set("wifi", ESP_LOG_NONE);
   esp_log_level_set("wifi_init", ESP_LOG_NONE);
+  esp_log_level_set("BUTTON", ESP_LOG_NONE);
   nvs_flash_init();
   esp_netif_init();
   esp_event_loop_create_default();
@@ -95,6 +98,7 @@ void setup()
   deviceInfor.Bat_Level = 100;
   init_gpio_output();
   init_simcom(ECHO_UART_PORT_NUM_1, ECHO_TEST_TXD_1, ECHO_TEST_RXD_1, ECHO_UART_BAUD_RATE);
+  xTaskCreate(button, "button", 4096, NULL, 3, NULL);
 }
 void loop()
 {
@@ -183,47 +187,97 @@ MQTT:
     }
     while(1)
     {
-      memset(&LBS_location, 0, sizeof(LBS_location));
-      memset(&gps_7600, 0, sizeof(gps_7600));
-      readGPS(&gps_7600);
-      res = getLBS(&LBS_location);
-      if (res && LBS_location.fix_status)
+      if (Location_type == 0x01)
       {
-        gps_7600.GPSfixmode = 2;
-        gps_7600.lat = LBS_location.lat;
-        gps_7600.lon = LBS_location.lon;
-        gps_7600.acc = LBS_location.acc;
-        ESP_LOGW(TAG, "LBS get location OK");
-      }
-      else
-      {
-        ESP_LOGE(TAG, "LBS get location FALSE");
-      }
-      if(gps_7600.GPSfixmode == 2 || gps_7600.GPSfixmode == 3)
-      {
+        Location_type = 0x00;
+        memset(&LBS_location, 0, sizeof(LBS_location));
+        res = getLBS(&LBS_location);
+        if (res && LBS_location.fix_status)
+        {
+          gps_7600.GPSfixmode = 2;
+          gps_7600.lat = LBS_location.lat;
+          gps_7600.lon = LBS_location.lon;
+          gps_7600.acc = LBS_location.acc;
+          ESP_LOGW(TAG, "LBS get location OK");
+        }
+        else
+        {
+          ESP_LOGE(TAG, "LBS get location FALSE");
+        }
         networkInfor(5, &network7600);
         MQTT_Location_Payload_Convert(pub_mqtt, gps_7600, network7600,  deviceInfor);
         res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_GPS, 1, 1);
+        if(res)   ESP_LOGW(TAG, "Publish OK");
+        else {
+          ESP_LOGE(TAG, "Publish FALSE");
+          goto MQTT;
+        }
       }
-      else
+      else if (Location_type == 0x02)
       {
-        networkInfor(5, &network7600);
-        wifi_scan(wifi_buffer);
-        MQTT_WiFi_Payload_Convert(pub_mqtt, wifi_buffer, network7600, deviceInfor);
-        res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_WFC, 1, 1);
-        memset(wifi_buffer, 0, sizeof(wifi_buffer));
+         Location_type = 0x00;
+         memset(&gps_7600, 0, sizeof(gps_7600));
+         networkInfor(5, &network7600);
+         MQTT_Location_Payload_Convert(pub_mqtt, gps_7600, network7600,  deviceInfor);
+         res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_GPS, 1, 1);
+         if(res)   ESP_LOGW(TAG, "Publish OK");
+          else {
+            ESP_LOGE(TAG, "Publish FALSE");
+            goto MQTT;
+          }
       }
-      if(res)
+      else if (Location_type == 0x03)
       {
-        ESP_LOGW(TAG, "Publish OK");
+         Location_type = 0x00;
+         networkInfor(5, &network7600);
+         wifi_scan(wifi_buffer);
+         MQTT_WiFi_Payload_Convert(pub_mqtt, wifi_buffer, network7600, deviceInfor);
+         res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_WFC, 1, 1);
+         memset(wifi_buffer, 0, sizeof(wifi_buffer));
+         if(res)   ESP_LOGW(TAG, "Publish OK");
+         else {
+           ESP_LOGE(TAG, "Publish FALSE");
+           goto MQTT;
+         }
       }
-      else
-      {
-        ESP_LOGE(TAG, "Publish FALSE");
-        goto MQTT;
-      }
-      vTaskDelay(1000/portTICK_PERIOD_MS);
-     }
+      vTaskDelay(10/portTICK_PERIOD_MS);
+    }
   }
-
+}
+void button (void * arg)
+{
+  button_event_t ev;
+  QueueHandle_t button_events = button_init(PIN_BIT(BUTTON));
+  int press_count = 0;
+  uint32_t capture = 0;
+  bool start = false;
+  while (true) {
+      if ((esp_timer_get_time() / 1000) > (capture + 1000)){
+          start = false;
+      }
+      if (xQueueReceive(button_events, &ev, 1000/portTICK_PERIOD_MS)) {
+        if ((ev.pin == BUTTON) && (ev.event == BUTTON_DOWN)) {
+          ESP_LOGI(TAG, "Press_count: %d", ++press_count);
+          if (press_count == 1){
+            start = true;
+          }
+          capture = esp_timer_get_time() / 1000;
+        }
+     }
+     if (press_count == 1 && start == false){
+          Location_type = 0x01;
+          press_count = 0;
+          ESP_LOGI(TAG, "-------------> LBS <-------------");
+        }
+     else if (press_count == 2 && start == false ){
+        Location_type = 0x02;
+        press_count = 0;
+        ESP_LOGI(TAG, "-------------> GPS <-------------");
+     }
+     else if (press_count == 3 && start == false){
+        Location_type = 0x03;
+        press_count = 0;
+        ESP_LOGI(TAG, "-------------> WiFi Cell <-------------");
+     }
+   }
 }
