@@ -7,7 +7,7 @@
 
 
 #include "simcom7600.h"
-
+#include <Arduino.h>
 void uart_simcom(void *arg);
 void _sendAT(const char *AT_command);
 bool _mqttStart(int retry);
@@ -48,7 +48,7 @@ void uart_simcom(void *arg)
 			ESP_LOGI(TAG, "Rec: %s", (char*) data);
 			if(strstr((char*)data, "+CMQTTRXSTART"))
 			{
-				simcom_7600.mqtt_CB(data);
+				simcom_7600.mqtt_CB((char*)data);
 			}
 			else
 			{
@@ -432,7 +432,7 @@ void powerOff_(gpio_num_t powerKey)
 }
 bool powerOn(gpio_num_t powerKey)
 {
-	AT_res res;
+	bool res;
 	gpio_set_level(powerKey, 1);
 	vTaskDelay(200/portTICK_PERIOD_MS);
 	gpio_set_level(powerKey, 0);

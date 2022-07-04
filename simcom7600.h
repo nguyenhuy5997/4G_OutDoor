@@ -47,7 +47,7 @@ typedef struct simcom_t
 	int baud_rate;
 	bool AT_buff_avai;
 	uint8_t AT_buff[BUF_SIZE];
-	void (*mqtt_CB)();
+	void (*mqtt_CB)(char * data);
 }simcom;
 typedef struct client_t
 {

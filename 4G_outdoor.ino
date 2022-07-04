@@ -27,14 +27,13 @@
 #include "json_user.h"
 #include "wifi_cell.h"
 #include "FOTA_LTE.h"
-
 #define TAG_MAIN "SIMCOM"
 
 #define CLIENT_ID "MAN02ND00074"
 #define MQTT_BROKER "tcp://vttmqtt.innoway.vn:1883"
 #define CLIENT_PW "NULL"
 #define VERSION "0.0.1"
-// char * sub_topic = "messages/MAN02ND00073/control";
+
 char wifi_buffer[400];
 client mqttClient7600 = {};
 gps gps_7600;
@@ -78,6 +77,7 @@ void subcribe_callback(char * data)
 
 void setup()
 {
+  Serial.begin(115200);
   esp_log_level_set("wifi", ESP_LOG_NONE);
   esp_log_level_set("wifi_init", ESP_LOG_NONE);
   nvs_flash_init();
@@ -174,9 +174,9 @@ MQTT:
         goto POWER_ON;
       }
     }
-    res = sendSMS("+84", "dit me");
-    if (res) ESP_LOGW(TAG, "SMS send OK");
-    else ESP_LOGE(TAG, "SMS send FALSE");
+//    res = sendSMS("+84947936312", "dit me may");
+//    if (res) ESP_LOGW(TAG, "SMS send OK");
+//    else ESP_LOGE(TAG, "SMS send FALSE");
     while(1)
     {
       memset(&LBS_location, 0, sizeof(LBS_location));
