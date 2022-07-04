@@ -1,3 +1,7 @@
+/*Please install esp_arduino core 2.0.3 to run code bellow
+ * Author: Huy Dao Nguyen
+ * Date: 04.07.2022
+ */
 #include "common.h"
 #include <stdio.h>
 #include <string.h>
@@ -29,10 +33,13 @@
 #include "FOTA_LTE.h"
 #define TAG_MAIN "SIMCOM"
 
-#define CLIENT_ID "MAN02ND00074"
-#define MQTT_BROKER "tcp://vttmqtt.innoway.vn:1883"
-#define CLIENT_PW "NULL"
-#define VERSION "0.0.1"
+#define CLIENT_ID       "MAN02ND00074"
+#define MQTT_BROKER     "tcp://vttmqtt.innoway.vn:1883"
+#define CLIENT_PW       "NULL"
+#define VERSION         "0.0.1"
+#define PUB_TOPIC_GPS   "messages/" CLIENT_ID "/gps"  
+#define PUB_TOPIC_WFC   "messages/" CLIENT_ID "/wificell"
+#define PUB_TOPIC_SUB   "messages/" CLIENT_ID "/control" 
 
 char wifi_buffer[400];
 client mqttClient7600 = {};
@@ -154,7 +161,7 @@ MQTT:
       ESP_LOGE(TAG, "MQTT can not connect");
     }
 
-    res = mqttSubcribe(mqttClient7600, "messages/MAN02ND00073/control", 1, 3, subcribe_callback);
+    res = mqttSubcribe(mqttClient7600, PUB_TOPIC_SUB, 1, 3, subcribe_callback);
     if(res) ESP_LOGW(TAG, "MQTT Sucribe OK");
     else
     {
@@ -174,9 +181,6 @@ MQTT:
         goto POWER_ON;
       }
     }
-//    res = sendSMS("+84947936312", "dit me may");
-//    if (res) ESP_LOGW(TAG, "SMS send OK");
-//    else ESP_LOGE(TAG, "SMS send FALSE");
     while(1)
     {
       memset(&LBS_location, 0, sizeof(LBS_location));
@@ -199,14 +203,14 @@ MQTT:
       {
         networkInfor(5, &network7600);
         MQTT_Location_Payload_Convert(pub_mqtt, gps_7600, network7600,  deviceInfor);
-        res = mqttPublish(mqttClient7600, pub_mqtt, "messages/MAN02ND00073/gps", 1, 1);
+        res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_GPS, 1, 1);
       }
       else
       {
         networkInfor(5, &network7600);
         wifi_scan(wifi_buffer);
         MQTT_WiFi_Payload_Convert(pub_mqtt, wifi_buffer, network7600, deviceInfor);
-        res = mqttPublish(mqttClient7600, pub_mqtt, "messages/MAN02ND00073/wificell", 1, 1);
+        res = mqttPublish(mqttClient7600, pub_mqtt, PUB_TOPIC_WFC, 1, 1);
         memset(wifi_buffer, 0, sizeof(wifi_buffer));
       }
       if(res)
